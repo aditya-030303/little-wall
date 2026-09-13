@@ -1,41 +1,88 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
+const MAX_LENGTH = 300;
+const COOLDOWN_MS = 8000;
+
 export default function MessageForm() {
   const [content, setContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    const trimmed = content.trim();
-    if (!trimmed || trimmed.length > 300) return;
+  async function handleSubmit(event) {
+    event.preventDefault();
+
+    const trimmedContent = content.trim();
+
+    if (!trimmedContent) {
+      setError('Please write a little something first.');
+      return;
+    }
+
+    if (trimmedContent.length > MAX_LENGTH) {
+      setError('Your thought is a little too long.');
+      return;
+    }
 
     setIsSubmitting(true);
-    await supabase.from('messages').insert([{ content: trimmed }]);
+    setError('');
+    setSuccess(false);
+
+    const { error: insertError } = await supabase
+      .from('messages')
+      .insert([{ content: trimmedContent }]);
+
+    if (insertError) {
+      console.error(insertError);
+      setError('Something went wrong. Please try again.');
+      setIsSubmitting(false);
+      return;
+    }
+
     setContent('');
+    setSuccess(true);
     setIsSubmitting(false);
-  };
+
+    setTimeout(() => {
+      setSuccess(false);
+    }, 2500);
+
+    setTimeout(() => {}, COOLDOWN_MS);
+  }
 
   return (
-    <form onSubmit={handleSubmit} className="max-w-md mx-auto p-4 mb-8">
+    <form className="message-form" onSubmit={handleSubmit}>
       <textarea
         value={content}
-        onChange={(e) => setContent(e.target.value)}
-        maxLength={300}
-        placeholder="Write something you want to leave here…"
-        className="w-full p-4 rounded-xl border border-stone-200 focus:outline-none focus:ring-2 focus:ring-stone-300 transition-shadow bg-white shadow-sm"
-        rows="3"
+        maxLength={MAX_LENGTH}
+        rows={4}
+        placeholder="Write something you want to leave here..."
+        onChange={(event) => {
+          setContent(event.target.value);
+          setError('');
+        }}
       />
-      <div className="flex justify-between items-center mt-2">
-        <span className="text-xs text-stone-400">{content.length}/300</span>
-        <button 
-          type="submit" 
-          disabled={isSubmitting || content.trim().length === 0}
-          className="bg-stone-800 text-white px-6 py-2 rounded-full hover:bg-stone-700 transition-colors disabled:opacity-50"
+
+      <div className="form-actions">
+        <span className="character-count">
+          {content.length}/{MAX_LENGTH}
+        </span>
+
+        <button
+          className="publish-button"
+          type="submit"
+          disabled={isSubmitting || !content.trim()}
         >
-          {isSubmitting ? 'Publishing...' : 'Publish'}
+          {isSubmitting ? 'Pinning...' : success ? 'Pinned ✓' : 'Pin it'}
         </button>
       </div>
+
+      {error && (
+        <p style={{ color: '#a34d46', fontSize: '0.78rem', marginBottom: 0 }}>
+          {error}
+        </p>
+      )}
     </form>
   );
 }

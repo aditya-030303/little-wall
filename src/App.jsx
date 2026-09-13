@@ -10,39 +10,96 @@ import Header from './components/Header';
 import MessageForm from './components/MessageForm';
 import MessageCard from './components/MessageCard';
 
-
 export default function App() {
   const [messages, setMessages] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     fetchMessages();
-    const channel = supabase.channel('realtime:messages')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
-        setMessages(prev => [payload.new, ...prev]);
-      })
+
+    const channel = supabase
+      .channel('messages-wall')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+        },
+        (payload) => {
+          setMessages((currentMessages) => {
+            const alreadyExists = currentMessages.some(
+              (message) => message.id === payload.new.id
+            );
+
+            if (alreadyExists) return currentMessages;
+
+            return [payload.new, ...currentMessages];
+          });
+        }
+      )
       .subscribe();
-    return () => supabase.removeChannel(channel);
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   async function fetchMessages() {
-    const { data } = await supabase.from('messages').select('*').order('created_at', { ascending: false });
-    if (data) setMessages(data);
+    setLoading(true);
+
+    const { data, error } = await supabase
+      .from('messages')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!error) {
+      setMessages(data || []);
+    } else {
+      console.error('Could not fetch messages:', error);
+    }
+
+    setLoading(false);
   }
 
   return (
-    <main className="min-h-screen max-w-2xl mx-auto">
+    <main className="site-shell">
       <Header />
       <MessageForm />
-      <div className="space-y-4 px-4 pb-12">
-        {messages.length === 0 ? (
-          <p className="text-center text-stone-400 py-10">“The wall is still empty. Be the first to leave something.”</p>
-        ) : (
-          messages.map(msg => <MessageCard key={msg.id} message={msg} />)
-        )}
-      </div>
+
+      <section className="wall-section">
+        <div className="wall-heading">
+          <span className="wall-heading-line" />
+          <h2>Little thoughts left here</h2>
+          <span className="wall-heading-line" />
+        </div>
+
+        <div className="wall">
+          {loading ? (
+            <p className="wall-status">Dusting off the wall...</p>
+          ) : messages.length === 0 ? (
+            <p className="wall-status">
+              The wall is still empty. Be the first to leave something.
+            </p>
+          ) : (
+            messages.map((message, index) => (
+              <MessageCard
+                key={message.id}
+                message={message}
+                index={index}
+              />
+            ))
+          )}
+        </div>
+      </section>
+
+      <footer className="site-footer">
+        Made for small thoughts and passing strangers
+      </footer>
     </main>
   );
 }
+
 
 // function App() {
 //   const [count, setCount] = useState(0)
